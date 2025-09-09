@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>수면 시간 계산기</title>
+  <style>
+    html { font-size: 36px; }
+    body { 
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', sans-serif; 
+      padding: 16px; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      justify-content: center; 
+      min-height: 100vh; 
+      margin: 0;
+      background-image: url('sleep.png');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      max-width: 500px;
+      width: 100%;
+    }
+    h1 { 
+      font-size: 1.2rem; 
+      margin: 0 0 1rem; 
+      text-align: center;
+      color: #333;
+    }
+    .box { 
+      border: 1px solid #ddd; 
+      border-radius: 12px; 
+      padding: 20px; 
+      margin: 15px 0; 
+      background: #fafafa; 
+      text-align: center;
+    }
+    label { 
+      font-size: .5rem; 
+      display: block; 
+      margin-bottom: .3rem; 
+      color: #555;
+    }
+    input[type="time"] { 
+      font-size: .6rem; 
+      padding: 8px 12px; 
+      border-radius: 10px; 
+      border: 1px solid #ccc; 
+      margin: 0 5px;
+    }
+    button { 
+      font-size: .55rem; 
+      padding: 10px 16px; 
+      border-radius: 999px; 
+      border: 0; 
+      background: #5b7cff; 
+      color: #fff; 
+      cursor: pointer; 
+      margin: 10px 5px;
+      transition: all 0.3s ease;
+    }
+    button:hover { background: #4a6bff; }
+    button:active { transform: translateY(1px); }
+    .result { 
+      font-size: .55rem; 
+      margin-top: .4rem; 
+      line-height: 1.4; 
+      text-align: left;
+    }
+    .hint { 
+      font-size: .45rem; 
+      color: #666; 
+      margin-top: .2rem; 
+      text-align: center;
+    }
+    b { font-weight: 800; }
+  </style>
+</head>
+<body>
+<script>
+// 한 사이클 90분, 잠들기까지 15분 가정
+const CYCLE = 90;
+const LATENCY = 15;
+
+function pad(n){ return (n<10?'0':'')+n; }
+function toMinutes(h, m){ return (h*60 + m) % 1440; }
+function fromMinutes(total){
+  total = ((total % 1440) + 1440) % 1440;
+  const h = Math.floor(total/60), m = total % 60;
+  return {h, m};
+}
+function fmt(h, m){ return pad(h)+":"+pad(m); }
+
+function parseTimeStr(t){ // "HH:MM" -> {h,m}
+  if(!t || !/^\d{2}:\d{2}$/.test(t)) return null;
+  const [h,m] = t.split(":").map(Number);
+  if(h<0||h>23||m<0||m>59) return null;
+  return {h,m};
+}
+
+// 기상시간 -> 취침시간 추천
+function suggestBedtimes(wakeH, wakeM, cycles=[6,5,4,3]) {
+  const wakeMin = toMinutes(wakeH, wakeM);
+  let out = `<b>기상 ${fmt(wakeH,wakeM)} → 추천 취침 시각</b><br>`;
+  cycles.forEach(c=>{
+    const totalSleep = c*CYCLE + LATENCY;
+    const bed = fromMinutes(wakeMin - totalSleep);
+    out += `${c}사이클(${(c*1.5).toFixed(1)}h): ${fmt(bed.h, bed.m)}<br>`;
+  });
+  return out;
+}
+
+// 취침시간 -> 기상시간 추천
+function suggestWakeTimes(bedH, bedM, cycles=[3,4,5,6]) {
+  const bedMin = toMinutes(bedH, bedM);
+  let out = `<b>취침 ${fmt(bedH,bedM)} → 추천 기상 시각</b><br>`;
+  cycles.forEach(c=>{
+    const totalSleep = c*CYCLE + LATENCY;
+    const wake = fromMinutes(bedMin + totalSleep);
+    out += `${c}사이클(${(c*1.5).toFixed(1)}h): ${fmt(wake.h, wake.m)}<br>`;
+  });
+  return out;
+}
+
+// UI 생성
+document.body.innerHTML = `
+  <div class="container">
+    <h1>수면 시간 계산기</h1>
+    <div class="hint">* 수면 사이클 90분 + 잠들기까지 15분(평균)을 가정합니다.</div>
+
+    <div class="box">
+      <label for="wake">기상 시각을 입력하면, 적정 취침 시각을 추천해요</label>
+      <br>
+      <input id="wake" type="time" value="07:30" />
+      <button id="btnBed">취침 시각 계산</button>
+      <div id="resBed" class="result"></div>
+    </div>
+
+    <div class="box">
+      <label for="bed">취침 시각을 입력하면, 적정 기상 시각을 추천해요</label>
+      <br>
+      <input id="bed" type="time" value="23:45" />
+      <button id="btnWake">기상 시각 계산</button>
+      <div id="resWake" class="result"></div>
+    </div>
+
+    <div class="hint">Tip. 결과는 여러 사이클 옵션을 보여줘요.<br>본인 패턴에 맞는 구간을 선택하세요.</div>
+  </div>
+`;
+
+// 이벤트 바인딩
+const wakeInput = document.getElementById('wake');
+const bedInput  = document.getElementById('bed');
+const resBed    = document.getElementById('resBed');
+const resWake   = document.getElementById('resWake');
+
+function calcBed(){
+  const t = parseTimeStr(wakeInput.value);
+  if(!t){ resBed.innerHTML = '시간 형식을 확인해 주세요 (예: 07:30)'; return; }
+  resBed.innerHTML = suggestBedtimes(t.h, t.m);
+}
+function calcWake(){
+  const t = parseTimeStr(bedInput.value);
+  if(!t){ resWake.innerHTML = '시간 형식을 확인해 주세요 (예: 23:45)'; return; }
+  resWake.innerHTML = suggestWakeTimes(t.h, t.m);
+}
+
+document.getElementById('btnBed').addEventListener('click', calcBed);
+document.getElementById('btnWake').addEventListener('click', calcWake);
+
+// 입력만 바꿔도 즉시 갱신되게
+wakeInput.addEventListener('input', calcBed);
+bedInput.addEventListener('input', calcWake);
+
+// 초기 계산
+calcBed();
+calcWake();
+</script>
+</body>
+</html>
